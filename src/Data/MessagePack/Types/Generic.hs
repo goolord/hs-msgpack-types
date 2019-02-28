@@ -4,7 +4,6 @@
 {-# LANGUAGE IncoherentInstances #-}
 {-# LANGUAGE KindSignatures      #-}
 {-# LANGUAGE LambdaCase          #-}
-{-# LANGUAGE Safe                #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators       #-}
 module Data.MessagePack.Types.Generic () where

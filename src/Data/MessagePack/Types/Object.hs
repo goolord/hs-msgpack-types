@@ -1,7 +1,9 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric      #-}
-{-# LANGUAGE Safe               #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE DerivingStrategies #-}
+
 module Data.MessagePack.Types.Object
   ( Object (..)
   ) where
@@ -14,8 +16,9 @@ import qualified Data.Text                 as T
 import           Data.Typeable             (Typeable)
 import           Data.Word                 (Word64, Word8)
 import           GHC.Generics              (Generic)
-import           Test.QuickCheck.Arbitrary (Arbitrary, arbitrary)
+import           Test.QuickCheck.Arbitrary (Arbitrary(..), Arbitrary1(..), shrink1, arbitrary1)
 import qualified Test.QuickCheck.Gen       as Gen
+import qualified Data.Vector               as V
 
 
 -- | Object Representation of MessagePack data.
@@ -36,9 +39,9 @@ data Object
     -- ^ extending Raw type represents a UTF-8 string
   | ObjectBin                   !S.ByteString
     -- ^ extending Raw type represents a byte array
-  | ObjectArray                 ![Object]
+  | ObjectArray                 !(V.Vector Object)
     -- ^ represents a sequence of objects
-  | ObjectMap                   ![(Object, Object)]
+  | ObjectMap                   !(V.Vector (Object, Object))
     -- ^ represents key-value pairs of objects
   | ObjectExt    {-# UNPACK #-} !Word8 !S.ByteString
     -- ^ represents a tuple of an integer and a byte array where
@@ -46,6 +49,14 @@ data Object
   deriving (Read, Show, Eq, Ord, Typeable, Generic)
 
 instance NFData Object
+
+instance Arbitrary a => Arbitrary (V.Vector a) where
+  arbitrary = arbitrary1
+  shrink = shrink1
+
+instance Arbitrary1 V.Vector where
+    liftArbitrary = fmap V.fromList . liftArbitrary
+    liftShrink shr = fmap V.fromList . liftShrink shr . V.toList
 
 instance Arbitrary Object where
   arbitrary = Gen.sized $ \n -> Gen.oneof
@@ -61,4 +72,5 @@ instance Arbitrary Object where
     , ObjectMap    <$> Gen.resize (n `div` 4) arbitrary
     , ObjectExt    <$> arbitrary <*> (S.pack <$> arbitrary)
     ]
-    where negatives = Gen.choose (minBound, -1)
+    where 
+    negatives = Gen.choose (minBound, -1)

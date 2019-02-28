@@ -127,7 +127,7 @@ instance MessagePack () where
   toObject _ = ObjectNil
   fromObject = \case
     ObjectNil      -> return ()
-    ObjectArray [] -> return ()
+    ObjectArray v  -> if V.null v then return () else fail "invalid encoding for ()"
     _              -> fail "invalid encoding for ()"
 
 instance MessagePack Bool where
@@ -187,36 +187,36 @@ instance MessagePack LT.Text where
 -- Instances for array-like data structures.
 
 instance MessagePack a => MessagePack [a] where
-  toObject = ObjectArray . map toObject
+  toObject = ObjectArray . fmap toObject . V.fromList
   fromObject = \case
-    ObjectArray xs -> mapM fromObject xs
+    ObjectArray xs -> V.toList <$> mapM fromObject xs
     _              -> fail "invalid encoding for list"
 
 instance MessagePack a => MessagePack (V.Vector a) where
-  toObject = ObjectArray . map toObject . V.toList
+  toObject = ObjectArray . fmap toObject
   fromObject = \case
-    ObjectArray o -> V.fromList <$> mapM fromObject o
+    ObjectArray o -> mapM fromObject o
     _             -> fail "invalid encoding for Vector"
 
 instance (MessagePack a, VU.Unbox a) => MessagePack (VU.Vector a) where
-  toObject = ObjectArray . map toObject . VU.toList
+  toObject = ObjectArray . fmap toObject . VU.convert
   fromObject = \case
-    ObjectArray o -> VU.fromList <$> mapM fromObject o
+    ObjectArray o -> V.convert <$> mapM fromObject o
     _             -> fail "invalid encoding for Unboxed Vector"
 
 instance (MessagePack a, VS.Storable a) => MessagePack (VS.Vector a) where
-  toObject = ObjectArray . map toObject . VS.toList
+  toObject = ObjectArray . fmap toObject . VS.convert
   fromObject = \case
-    ObjectArray o -> VS.fromList <$> mapM fromObject o
+    ObjectArray o -> V.convert <$> mapM fromObject o
     _             -> fail "invalid encoding for Storable Vector"
 
 -- Instances for map-like data structures.
 
 instance (MessagePack a, MessagePack b) => MessagePack (Assoc [(a, b)]) where
-  toObject (Assoc xs) = ObjectMap $ map (toObject *** toObject) xs
+  toObject (Assoc xs) = ObjectMap $ V.fromList $ fmap (toObject *** toObject) xs
   fromObject = \case
     ObjectMap xs ->
-      Assoc <$> mapM (\(k, v) -> (,) <$> fromObject k <*> fromObject v) xs
+      Assoc <$> mapM (\(k, v) -> (,) <$> fromObject k <*> fromObject v) (V.toList xs)
     _ ->
       fail "invalid encoding for Assoc"
 
@@ -236,41 +236,26 @@ instance (MessagePack k, MessagePack v, Hashable k, Eq k) => MessagePack (HashMa
 -- Instances for various tuple arities.
 
 instance (MessagePack a1, MessagePack a2) => MessagePack (a1, a2) where
-  toObject (a1, a2) = ObjectArray [toObject a1, toObject a2]
-  fromObject (ObjectArray [a1, a2]) = (,) <$> fromObject a1 <*> fromObject a2
-  fromObject _                      = fail "invalid encoding for tuple"
+  toObject (a1, a2) = ObjectArray $ V.fromList [toObject a1, toObject a2]
+  fromObject (ObjectArray as) = match (V.toList as)
+    where
+    match [a1,a2] = (,) <$> fromObject a1 <*> fromObject a2
+    match _ = fail "invalid encoding for tuple"
+  fromObject _ = fail "invalid encoding for tuple"
 
 instance (MessagePack a1, MessagePack a2, MessagePack a3) => MessagePack (a1, a2, a3) where
-  toObject (a1, a2, a3) = ObjectArray [toObject a1, toObject a2, toObject a3]
-  fromObject (ObjectArray [a1, a2, a3]) = (,,) <$> fromObject a1 <*> fromObject a2 <*> fromObject a3
+  toObject (a1, a2, a3) = ObjectArray $ V.fromList [toObject a1, toObject a2, toObject a3]
+  fromObject (ObjectArray as) = match (V.toList as)
+    where
+    match [a1, a2, a3] = (,,) <$> fromObject a1 <*> fromObject a2 <*> fromObject a3
+    match _ = fail "invalid encoding for tuple"
   fromObject _ = fail "invalid encoding for tuple"
 
 instance (MessagePack a1, MessagePack a2, MessagePack a3, MessagePack a4) => MessagePack (a1, a2, a3, a4) where
-  toObject (a1, a2, a3, a4) = ObjectArray [toObject a1, toObject a2, toObject a3, toObject a4]
-  fromObject (ObjectArray [a1, a2, a3, a4]) = (,,,) <$> fromObject a1 <*> fromObject a2 <*> fromObject a3 <*> fromObject a4
+  toObject (a1, a2, a3, a4) = ObjectArray $ V.fromList [toObject a1, toObject a2, toObject a3, toObject a4]
+  fromObject (ObjectArray as) = match (V.toList as)
+    where
+    match [a1, a2, a3, a4] = (,,,) <$> fromObject a1 <*> fromObject a2 <*> fromObject a3 <*> fromObject a4
+    match _ = fail "invalid encoding for tuple"
   fromObject _ = fail "invalid encoding for tuple"
 
-instance (MessagePack a1, MessagePack a2, MessagePack a3, MessagePack a4, MessagePack a5) => MessagePack (a1, a2, a3, a4, a5) where
-  toObject (a1, a2, a3, a4, a5) = ObjectArray [toObject a1, toObject a2, toObject a3, toObject a4, toObject a5]
-  fromObject (ObjectArray [a1, a2, a3, a4, a5]) = (,,,,) <$> fromObject a1 <*> fromObject a2 <*> fromObject a3 <*> fromObject a4 <*> fromObject a5
-  fromObject _ = fail "invalid encoding for tuple"
-
-instance (MessagePack a1, MessagePack a2, MessagePack a3, MessagePack a4, MessagePack a5, MessagePack a6) => MessagePack (a1, a2, a3, a4, a5, a6) where
-  toObject (a1, a2, a3, a4, a5, a6) = ObjectArray [toObject a1, toObject a2, toObject a3, toObject a4, toObject a5, toObject a6]
-  fromObject (ObjectArray [a1, a2, a3, a4, a5, a6]) = (,,,,,) <$> fromObject a1 <*> fromObject a2 <*> fromObject a3 <*> fromObject a4 <*> fromObject a5 <*> fromObject a6
-  fromObject _ = fail "invalid encoding for tuple"
-
-instance (MessagePack a1, MessagePack a2, MessagePack a3, MessagePack a4, MessagePack a5, MessagePack a6, MessagePack a7) => MessagePack (a1, a2, a3, a4, a5, a6, a7) where
-  toObject (a1, a2, a3, a4, a5, a6, a7) = ObjectArray [toObject a1, toObject a2, toObject a3, toObject a4, toObject a5, toObject a6, toObject a7]
-  fromObject (ObjectArray [a1, a2, a3, a4, a5, a6, a7]) = (,,,,,,) <$> fromObject a1 <*> fromObject a2 <*> fromObject a3 <*> fromObject a4 <*> fromObject a5 <*> fromObject a6 <*> fromObject a7
-  fromObject _ = fail "invalid encoding for tuple"
-
-instance (MessagePack a1, MessagePack a2, MessagePack a3, MessagePack a4, MessagePack a5, MessagePack a6, MessagePack a7, MessagePack a8) => MessagePack (a1, a2, a3, a4, a5, a6, a7, a8) where
-  toObject (a1, a2, a3, a4, a5, a6, a7, a8) = ObjectArray [toObject a1, toObject a2, toObject a3, toObject a4, toObject a5, toObject a6, toObject a7, toObject a8]
-  fromObject (ObjectArray [a1, a2, a3, a4, a5, a6, a7, a8]) = (,,,,,,,) <$> fromObject a1 <*> fromObject a2 <*> fromObject a3 <*> fromObject a4 <*> fromObject a5 <*> fromObject a6 <*> fromObject a7 <*> fromObject a8
-  fromObject _ = fail "invalid encoding for tuple"
-
-instance (MessagePack a1, MessagePack a2, MessagePack a3, MessagePack a4, MessagePack a5, MessagePack a6, MessagePack a7, MessagePack a8, MessagePack a9) => MessagePack (a1, a2, a3, a4, a5, a6, a7, a8, a9) where
-  toObject (a1, a2, a3, a4, a5, a6, a7, a8, a9) = ObjectArray [toObject a1, toObject a2, toObject a3, toObject a4, toObject a5, toObject a6, toObject a7, toObject a8, toObject a9]
-  fromObject (ObjectArray [a1, a2, a3, a4, a5, a6, a7, a8, a9]) = (,,,,,,,,) <$> fromObject a1 <*> fromObject a2 <*> fromObject a3 <*> fromObject a4 <*> fromObject a5 <*> fromObject a6 <*> fromObject a7 <*> fromObject a8 <*> fromObject a9
-  fromObject _ = fail "invalid encoding for tuple"

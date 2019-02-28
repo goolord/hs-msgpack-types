@@ -1,5 +1,3 @@
-{-# LANGUAGE Safe #-}
-
 module Data.MessagePack.Types (
   -- * Re-export modules
   -- $reexports
